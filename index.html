@@ -1,1 +1,178 @@
-<meta http-equiv="Refresh" content="0; url=escape_lithuania_v2.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escape Lithuania – Erasmus Edition</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0f0f12;color:#f1f5f9;margin:0;padding:0;}
+header{padding:16px;background:#0d0e12;position:sticky;top:0;}
+main{max-width:900px;margin:0 auto;padding:24px;}
+.card{background:#17181c;padding:22px;border-radius:16px;margin-bottom:20px;}
+button{padding:12px 18px;border-radius:12px;background:#006a44;color:#fff;border:none;cursor:pointer;}
+button[disabled]{opacity:.5;cursor:not-allowed;}
+input{padding:10px;border-radius:12px;border:none;width:70%;}
+table{width:100%;border-collapse:collapse;margin-top:12px;}
+th,td{border:1px solid #2a2f39;padding:6px;text-align:left;}
+th{background:#1a1c21;}
+</style>
+
+<!-- Firebase SDK (compat version) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+
+<header><h1>Escape Lithuania – Erasmus Edition</h1></header>
+<main>
+<section id="screen-start" class="card">
+<h2>Enter Your Team Name</h2>
+<input id="team-name" placeholder="Team Name">
+<div style="margin-top:12px"><button id="btn-start">Start Game</button></div>
+</section>
+
+<section id="screen-quiz" class="card" style="display:none;">
+<div id="qtitle"></div>
+<div id="qtext" style="margin:10px 0;"></div>
+<div id="options"></div>
+<button id="btn-next" disabled>Next →</button>
+</section>
+
+<section id="screen-end" class="card" style="display:none;">
+<h2>🎉 You Escaped Lithuania!</h2>
+<p>Team: <b id="final-team"></b></p>
+<div id="results">
+<h3>Leaderboard</h3>
+<table id="results-table">
+<thead><tr><th>Team</th><th>Time (s)</th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+<button id="btn-restart">Play Again</button>
+</section>
+</main>
+
+<script>
+// ===== Firebase config =====
+const firebaseConfig = {
+  apiKey: "AIzaSyAal4OrNEl-hK_kdiEk7IzFRMEbd95gyVE",
+  authDomain: "erasmus-escape-lithuania.firebaseapp.com",
+  projectId: "erasmus-escape-lithuania",
+  storageBucket: "erasmus-escape-lithuania.firebasestorage.app",
+  messagingSenderId: "199219001163",
+  appId: "1:199219001163:web:8ff04629f1cf69c15c9ace",
+  measurementId: "G-NJ1Z5QGWNT"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// ===== Data =====
+const QUESTIONS = [
+{title:"Dream of the Iron Wolf",text:"A castle on a hill, two rivers below, city born from a dream. What city is this?",options:["Kaunas","Vilnius","Klaipėda","Riga"],correct:1},
+{title:"Tongue Twister",text:"Translate first word of: 'Šeši žąsinai žarstė žirnius žvirbliams'.",options:["Six","Goose","Beans","Fast"],correct:0},
+{title:"Sweet Victory",text:"Which chocolate means 'Victory'?",options:["Griliažas","Karvutė","Pergalė","Laima"],correct:2},
+];
+
+// ===== State =====
+let idx=0,teamName="",teamId=null,totalStart=0;
+
+// ===== Firebase Auth =====
+auth.signInAnonymously()
+.then(user=>console.log("Signed in anonymously",user.user.uid))
+.catch(err=>console.error(err));
+
+// ===== Render question =====
+function renderQuestion(){
+  const q = QUESTIONS[idx];
+  document.getElementById("qtitle").textContent = `Q${idx+1}: ${q.title}`;
+  document.getElementById("qtext").textContent = q.text;
+  const optsDiv = document.getElementById("options");
+  optsDiv.innerHTML = "";
+  q.options.forEach((opt,i)=>{
+    const b = document.createElement("button");
+    b.textContent = opt;
+    b.onclick = ()=>answerQuestion(i);
+    optsDiv.appendChild(b);
+  });
+}
+
+// ===== Answer =====
+function answerQuestion(selected){
+  const q = QUESTIONS[idx];
+  const correct = (selected===q.correct);
+  const opts = document.getElementById("options").children;
+  for(let b of opts) b.disabled=true;
+  if(correct) document.getElementById("btn-next").disabled=false;
+  db.collection("teams").doc(teamId).update({currentQuestion: idx+1});
+}
+
+// ===== Next =====
+document.getElementById("btn-next").onclick = ()=>{
+  idx++;
+  if(idx >= QUESTIONS.length){
+    finishGame();
+  } else {
+    renderQuestion();
+    document.getElementById("btn-next").disabled=true;
+  }
+};
+
+// ===== Start Game =====
+document.getElementById("btn-start").onclick = ()=>{
+  teamName = document.getElementById("team-name").value.trim()||"Team";
+  db.collection("teams").add({
+    name: teamName,
+    currentQuestion:0,
+    startTime:Date.now(),
+    finishTime:null
+  }).then(doc=>{
+    teamId = doc.id;
+    idx=0;
+    totalStart=Date.now();
+    document.getElementById("screen-start").style.display="none";
+    document.getElementById("screen-quiz").style.display="block";
+    renderQuestion();
+  });
+};
+
+// ===== Finish Game =====
+function finishGame(){
+  const elapsed = Math.round((Date.now()-totalStart)/1000);
+  db.collection("teams").doc(teamId).update({finishTime:Date.now()});
+  db.collection("results").add({
+    team: teamName,
+    time: elapsed,
+    completedAt: Date.now()
+  });
+  document.getElementById("screen-quiz").style.display="none";
+  document.getElementById("screen-end").style.display="block";
+  document.getElementById("final-team").textContent = teamName;
+  showResults();
+}
+
+// ===== Show results dashboard =====
+function showResults(){
+  const tbody = document.querySelector("#results-table tbody");
+  tbody.innerHTML="";
+  db.collection("results").orderBy("time","asc").get().then(snap=>{
+    snap.forEach(doc=>{
+      const r = doc.data();
+      const tr = document.createElement("tr");
+      tr.innerHTML=`<td>${r.team}</td><td>${r.time}</td>`;
+      tbody.appendChild(tr);
+    });
+  });
+}
+
+// ===== Restart =====
+document.getElementById("btn-restart").onclick = ()=>{
+  idx=0;
+  teamId=null;
+  document.getElementById("screen-end").style.display="none";
+  document.getElementById("screen-start").style.display="block";
+};
+</script>
+</body>
+</html>
